@@ -1,15 +1,16 @@
 namespace ShellRemoteOperator
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
-    using System.Threading.Tasks;
-    using System.IO;
-    using System.Linq;
     using System.Diagnostics;
+    using System.Linq;
+    using System.Threading.Tasks;
 
     public class ShellController
     {
         private readonly ILogger _logger;
+        private readonly ConcurrentDictionary<string, string> _osVersions = new ConcurrentDictionary<string, string>();
 
         public ShellController(ILogger logger)
         {
@@ -27,29 +28,37 @@ namespace ShellRemoteOperator
             var results = await Task.WhenAll(tasks);
 
             // Count how many were unsuccessful
-            int failCount = results.Count(success => !success);
+            int failCount = results.Count(result => !result.success);
 
             if (failCount == 0)
                 await _logger.Log("Invoking complete!", "INFO");
             else
                 await _logger.Log($"Invoking shell failed on {failCount} host(s)!", "ERROR");
+
+            // Log the OS versions
+            foreach (var kvp in _osVersions)
+            {
+                await _logger.Log($"Host: {kvp.Key}, OS Version: {kvp.Value}", "INFO");
+            }
         }
 
-        private async Task<bool> InvokeShell(string host)
+        private async Task<(bool success, string osVersion)> InvokeShell(string host)
         {
             try
             {
                 await _logger.Log($"Invoking on {host}...", "INFO");
 
+                string osVersion = string.Empty;
+
                 if (host == "localhost")
                 {
-                    // Launch cmd.exe, echo "hello world", wait 3 seconds, and exit
+                    // Use PowerShell to get the OS version
                     var process = new Process
                     {
                         StartInfo = new ProcessStartInfo
                         {
-                            FileName = "cmd.exe",
-                            Arguments = "/c echo hello world && timeout /t 3",
+                            FileName = "powershell.exe",
+                            Arguments = "-Command \"(Get-CimInstance Win32_OperatingSystem).Version\"",
                             RedirectStandardOutput = true,
                             RedirectStandardError = true,
                             UseShellExecute = false,
@@ -71,7 +80,8 @@ namespace ShellRemoteOperator
                         throw new Exception(error);
                     }
 
-                    await _logger.Log($"Shell Output: {output}", "INFO");
+                    osVersion = output.Trim();
+                    await _logger.Log($"OS Version: {osVersion}", "INFO");
                 }
                 else
                 {
@@ -82,15 +92,17 @@ namespace ShellRemoteOperator
                         await _logger.Log($"Invoking failed on {host}!", "ERROR");
                         throw new Exception("Invoking failed!");
                     }
+                    osVersion = "Simulated OS Version"; // Replace with actual OS version retrieval for remote hosts
                     await _logger.Log($"Invoking on {host} succeeded!", "INFO");
                 }
 
-                return true;
+                _osVersions[host] = osVersion;
+                return (true, osVersion);
             }
             catch (Exception e)
             {
                 await _logger.Log($"{e.Message} (Host: {host})", "ERROR");
-                return false;
+                return (false, string.Empty);
             }
         }
     }
