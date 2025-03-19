@@ -26,8 +26,6 @@ namespace ShellRemoteOperator
 
             // Wait for all the tasks to complete in parallel
             var results = await Task.WhenAll(tasks);
-
-            // Count how many were unsuccessful
             int failCount = results.Count(result => !result.success);
 
             if (failCount == 0)
@@ -35,7 +33,6 @@ namespace ShellRemoteOperator
             else
                 await _logger.Log($"Invoking shell failed on {failCount} host(s)!", "ERROR");
 
-            // Log the OS versions
             foreach (var kvp in _osVersions)
             {
                 await _logger.Log($"Host: {kvp.Key}, OS Version: {kvp.Value}", "INFO");
@@ -73,7 +70,6 @@ namespace ShellRemoteOperator
 
                     process.WaitForExit();
 
-                    // If there's an error output, log and throw to simulate failure
                     if (!string.IsNullOrEmpty(error))
                     {
                         await _logger.Log($"Error: {error}", "ERROR");
